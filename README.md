@@ -1,15 +1,20 @@
 # charm-table-cli
 
-CLI tool to render CSV, JSON, and TSV as beautiful styled terminal tables.
+CLI tool to render CSV, JSON, TSV and JSONL as beautiful styled terminal tables.
 
-> **[Leia em Portugues (PT-BR)](README.pt-br.md)**
+> **[Leia em Português (PT-BR)](README.pt-br.md)**
 
 ## Features
 
 - Reads from **stdin** or a **file argument**
-- Auto-detects format: **CSV**, **JSON array**, **TSV**, **JSONL**
-- Styled borders: `rounded`, `thick`, `double`, `ascii`
-- Configurable header color and max width
+- Auto-detects format: **CSV**, **TSV**, **JSON array**, **JSONL**
+- Styled borders: `rounded`, `thick`, `double`, `ascii` (real ASCII: `+---+`)
+- Deterministic column order for JSON/JSONL — the union of the keys of **all**
+  records is used, so no column is silently dropped
+- Ragged CSV/TSV records are normalized instead of aborting the program
+- Column widths are measured in **terminal cells**, so CJK text and emoji stay
+  aligned
+- `--max-width` truncates safely and never exceeds the requested limit
 - Powered by [Lip Gloss](https://github.com/charmbracelet/lipgloss)
 
 ## Install
@@ -36,8 +41,8 @@ charm-table-cli --style double --color "212" --max-width 80 data.tsv
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--style` | `rounded` | Border style: `rounded`, `thick`, `double`, `ascii` |
-| `--header` | `true` | Use first row as header |
-| `--max-width` | `0` | Max table width (0 = unlimited) |
+| `--header` | `true` | Use the first row as header (applies to every format) |
+| `--max-width` | `0` | Max table width in columns, borders included (0 = unlimited) |
 | `--color` | `63` | Header color (ANSI number or hex) |
 
 ### Supported Formats
@@ -46,6 +51,42 @@ charm-table-cli --style double --color "212" --max-width 80 data.tsv
 - **TSV** — tab-separated values
 - **JSON** — array of objects (`[{"key": "value"}, ...]`)
 - **JSONL** — one JSON object per line
+
+## Behaviour
+
+### Column order (JSON and JSONL)
+
+Map iteration order in Go is random, so the columns are collected explicitly:
+the keys of the first record that contains them come first (alphabetically
+inside each record), and keys that only show up in later records are appended.
+The same input always produces the same table.
+
+```bash
+echo '[{"name":"Alice","age":30},{"name":"Bob","city":"LA"}]' | charm-table-cli
+# age | name | city
+```
+
+### Ragged records (CSV and TSV)
+
+Rows with a different number of fields do not abort the program: the table
+grows to the widest record and the missing cells are filled with empty
+values.
+
+```bash
+printf 'a,b,c\n1,2\n3,4,5,6\n' | charm-table-cli
+```
+
+### `--header=false`
+
+The first row is treated as data and the columns are named `Col1`, `Col2`, …
+This works for every format (CSV, TSV, JSON and JSONL).
+
+### `--max-width`
+
+The width of the table includes the borders and the cell padding. When the
+content does not fit, the widest columns are reduced and the text is
+truncated safely (never in the middle of a character). A limit too small even
+for the borders is reported as an error instead of producing a broken table.
 
 ## Examples
 
@@ -60,6 +101,16 @@ echo '[{"name":"Alice","age":30},{"name":"Bob","age":25}]' | charm-table-cli
 
 # ASCII style
 charm-table-cli --style ascii data.csv
+```
+
+```text
+$ echo "name,age,city
+Alice,30,NYC" | charm-table-cli --style ascii
++-------+-----+------+
+| name  | age | city |
++-------+-----+------+
+| Alice | 30  | NYC  |
++-------+-----+------+
 ```
 
 ## License
